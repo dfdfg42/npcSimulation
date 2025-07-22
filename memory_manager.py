@@ -25,7 +25,7 @@ class MemoryManager:
         self.kw_to_event = defaultdict(list)
         self.kw_to_thought = defaultdict(list)
         self.kw_strength = defaultdict(int)
-
+ 
         # 지식 베이스
         self.knowledge_base: dict[str, Knowledge] = {}
 
@@ -57,22 +57,30 @@ class MemoryManager:
         """short_term.json, long_term.json을 읽어 메모리 객체로 복구"""
         for path, target in [
             (self.short_term_path, self.short_term_memory_room),
-            (self.long_term_path,  self.long_term_memory_room)
+            (self.long_term_path, self.long_term_memory_room)
         ]:
             if not os.path.exists(path):
                 continue
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                print(f"⚠️ 경고: '{path}' 파일이 비어있거나 JSON 형식이 아닙니다. 무시하고 계속 진행합니다.")
+                data = []
 
             for item in data:
                 mem = Memory(
-                    memory_type=item["type"],
-                    description=item["desc"],
-                    importance=item["imp"],
-                    embedding=self.llm_utils.get_embedding(item["desc"]),
-                    keywords=self._extract_keywords(item["desc"])
+                    memory_type=item.get("type", "event"),
+                    description=item.get("desc", ""),
+                    importance=item.get("imp", 5),
+                    embedding=self.llm_utils.get_embedding(item.get("desc", "")),
+                    keywords=self._extract_keywords(item.get("desc", ""))
                 )
-                mem.timestamp = datetime.datetime.fromisoformat(item["ts"])
+                mem.timestamp = datetime.datetime.fromisoformat(item.get("ts", datetime.datetime.now().isoformat()))
+                mem.emotion = item.get("emotion")
+                mem.strategy = item.get("strategy")
+                mem.personality = item.get("personality")
                 target.append(mem)
 
                 # 🔸 1) seq_event / seq_thought에도 넣기
@@ -85,6 +93,7 @@ class MemoryManager:
                 for kw in mem.keywords:
                     (self.kw_to_event if mem.type == 'event' else self.kw_to_thought)[kw].append(mem)
                     self.kw_strength[kw] += mem.importance
+
 
 
     def set_persona_description(self, persona_desc: str):
@@ -198,14 +207,59 @@ class MemoryManager:
             return 5
 
     def _summarize_short_term(self):
-        """단기 메모리를 요약하여 장기 메모리로 이관"""
+        """단기 메모리를 요약하여 장기 메모리로 이관 + 메타 정보 포함"""
         joined = "\n".join([m.description for m in self.short_term_memory_room])
-        prompt = f"다음 사건들의 핵심을 한 문장으로 요약해줘:\n{joined}\n\n[요약]"
-        summary_sentence = self.llm_utils.get_llm_response(prompt, temperature=0.3, max_tokens=60)
 
+        # ① 요약 문장 생성
+        summary_sentence = self.llm_utils.get_llm_response(
+            f"다음 사건들의 핵심을 한 문장으로 요약해줘:\n{joined}\n\n[요약]",
+            temperature=0.3, max_tokens=60
+        )
+
+        # ② 메타 정보 추출 프롬프트
+        meta_prompt = f"""
+    다음 대화 내용을 기반으로 사용자에 대한 다음 정보를 각각 한 문장으로 요약해줘:
+    - Emotion (감정): 현재 사용자 감정 상태
+    - Strategy (전략): 이 사용자에게 적절한 AI 대응 방식
+    - Personality (성격): 사용자의 성격적 특징
+
+    형식은 아래처럼 반환해줘:
+
+    Emotion: ...
+    Strategy: ...
+    Personality: ...
+
+    [대화 내용]
+    {joined}
+        """
+
+        meta_response = self.llm_utils.get_llm_response(
+            meta_prompt, temperature=0.3, max_tokens=150
+        )
+
+        # ③ 메타 정보 파싱
+        emotion = strategy = personality = None
+        for line in meta_response.splitlines():
+            if line.lower().startswith("emotion:"):
+                emotion = line.partition(":")[2].strip()
+            elif line.lower().startswith("strategy:"):
+                strategy = line.partition(":")[2].strip()
+            elif line.lower().startswith("personality:"):
+                personality = line.partition(":")[2].strip()
+
+        # ④ 메모리 생성 및 저장
         embedding = self.llm_utils.get_embedding(summary_sentence)
         keywords = self._extract_keywords(summary_sentence)
-        summary_mem = Memory("summary", summary_sentence, 8, embedding, keywords)
+        summary_mem = Memory(
+            memory_type="summary",
+            description=summary_sentence,
+            importance=8,
+            embedding=embedding,
+            keywords=keywords,
+            emotion=emotion,
+            strategy=strategy,
+            personality=personality
+        )
         self.long_term_memory_room.append(summary_mem)
 
     def _normalize_scores(self, scores: dict) -> dict:
@@ -347,15 +401,15 @@ class MemoryManager:
         {list(self.knowledge_base.keys())}
 
         [지시]
-        위 대화에서 '{self.name}'가 '새롭게' 알게 된 중요한 사실을 JSON 객체로 추출해줘.
+        위 대화에서 '{self.name}'가 '새롭게' 알게 된 중요한 사실을 JSON 객체로 추출해줘. **플레이어에 대해 새로 알게 된 '속성:값'** 쌍만 JSON 객체로 추출해 줘.
         - **고유명사:** 사람 이름, 장소, 특정 과목명 등.
         - **관계적 의미:** 일반적인 단어지만 이 대화의 맥락에서 특별한 의미를 갖게 된 경우.
         설명은 반드시 플레이어와의 관계를 중심으로 작성해야 합니다.
 
         - **좋은 예시 1 (고유명사):** 플레이어가 "저는 컴공을 전공하는 경우입니다" 라고 말했다면,
-          결과는 {{"경우": "플레이어의 이름", "컴공": "플레이어가 전공하고 있는 학과"}} 이어야 합니다.
+          결과는 {{"플레이어의 이름": "경우", "플레이어가 전공하고 있는 학과": "컴공"}} 이어야 합니다.
         - **좋은 예시 2 (관계적 의미):** 플레이어가 "제 졸업 작품은 저의 '흰고래'예요" 라고 말했다면,
-          결과는 {{"흰고래": "플레이어가 자신의 어렵고 중요한 졸업 작품을 비유적으로 표현하는 말"}} 이어야 합니다.
+          결과는 {{"플레이어가 자신의 어렵고 중요한 졸업 작품을 비유적으로 표현하는 말" : "흰고래"}} 이어야 합니다.
         - **나쁜 예시 (일반 사실):** 플레이어가 "하늘은 파랗다" 라고 말했다면, 결과는 {{}} 이어야 합니다.
 
         새로 알게 된 사실이 없다면, 빈 JSON 객체 {{}}를 반환해.
@@ -363,17 +417,41 @@ class MemoryManager:
 
         [JSON 출력]
         """
+
+        
         response_str = self.llm_utils.get_llm_response(prompt, temperature=0.1, max_tokens=500, is_json=True)
 
         try:
             new_knowledge = json.loads(response_str)
             if new_knowledge:
                 for concept, desc in new_knowledge.items():
-                    if concept not in self.knowledge_base:
+                    # 이미 알고 있던 개념인가?
+                    if concept in self.knowledge_base:
+                        know = self.knowledge_base[concept]
+
+                        # 설명이 달라졌으면 → 정정(덮어쓰기)
+                        if know.description != desc:
+                            know.description = desc
+                            know.embedding   = self.llm_utils.get_embedding(concept)
+
+                            print(f"DEBUG (Knowledge): '{concept}' 정의 수정 -> {desc}")
+                            self.add_memory(
+                                'thought',
+                                f"[지식 수정] '{concept}' 정의가 '{desc}'로 업데이트되었다.",
+                                importance=6
+                            )
+
+                    # 완전히 새로운 개념이면 → 기존 로직과 동일
+                    else:
                         emb = self.llm_utils.get_embedding(concept)
                         self.knowledge_base[concept] = Knowledge(concept, desc, emb)
+
                         print(f"DEBUG (Knowledge): 새로운 지식 추가! -> {self.knowledge_base[concept]}")
-                        print(f'thought', f"[지식 습득] '{concept}'은(는) '{desc}'라는 것을 알게 되었다.")
+                        self.add_memory(
+                            'thought',
+                            f"[지식 습득] '{concept}'은(는) '{desc}'라는 것을 알게 되었다.",
+                            importance=5
+                        )
 
         except json.JSONDecodeError:
             print(f"DEBUG (Knowledge): 지식 추출 실패. 응답: {response_str}")
@@ -392,7 +470,10 @@ class MemoryManager:
                 "type": mem.type,
                 "desc": mem.description,
                 "imp": mem.importance,
-                "ts": mem.timestamp.isoformat()
+                "ts": mem.timestamp.isoformat(),
+                "emotion": mem.emotion,
+                "strategy": mem.strategy,
+                "personality": mem.personality,
             }
 
         with open(self.short_term_path, "w", encoding="utf-8") as f:

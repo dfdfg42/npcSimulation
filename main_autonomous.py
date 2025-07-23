@@ -12,8 +12,8 @@ from datetime import datetime
 # 프로젝트 루트(D:\npcSimul)를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 폴더 경로를 포함하여 임포트
-from config_autonomous import *
+# config.py를 직접 임포트
+from config import *
 from llm_utils import LLM_Utils
 from npc_agent_autonomous import AutonomousNpcAgent
 from time_manager import time_manager
@@ -43,7 +43,8 @@ def check_api_key():
 
     if not OPENAI_API_KEY or OPENAI_API_KEY == "sk-your-api-key-here":
         print("❌ OpenAI API 키가 설정되지 않았습니다.")
-        print("config_autonomous.py 파일에서 OPENAI_API_KEY를 설정해주세요.")
+        # 파일 이름 수정
+        print("config.py 파일에서 OPENAI_API_KEY를 설정해주세요.")
         return False
 
     # API 키 유효성 간단 테스트
@@ -268,6 +269,43 @@ def interactive_demo():
     return True
 
 
+def run_chat_only_demo():
+    """대화 전용 데모 모드 (시간 흐름, 자율 행동 없음)"""
+    print("💬 대화 전용 데모 모드")
+    print("=" * 50)
+
+    # 시스템 체크
+    if not check_dependencies() or not check_api_key() or not setup_memory_directories():
+        return False
+
+    # 초기화 (TimeManager 제외)
+    llm_utils = LLM_Utils(api_key=OPENAI_API_KEY)
+    npc = create_test_npc(llm_utils)
+    if not npc:
+        return False
+
+    print(f"\n👋 안녕하세요! '{npc.name}'와(과) 자유롭게 대화해보세요.")
+    print("💡 'exit'를 입력하면 종료됩니다.")
+
+    try:
+        while True:
+            # 시간 흐름 및 자율 업데이트 없이 바로 사용자 입력 대기
+            user_input = input("\n나: ").strip()
+
+            if user_input.lower() == 'exit':
+                print("👋 데모를 종료합니다.")
+                break
+
+            if user_input:
+                # 1단계에서 추가한 새로운 대화 전용 메서드 호출
+                response = npc.chat_with_player(user_input)
+                print(f"{npc.name}: {response}")
+
+    except KeyboardInterrupt:
+        print("\n\n🛑 데모가 중단되었습니다.")
+
+    return True
+
 def main():
     """메인 함수"""
     parser = argparse.ArgumentParser(
@@ -275,8 +313,10 @@ def main():
     )
     parser.add_argument(
         "mode",
-        choices=["test", "server", "demo"],
-        help="실행 모드 선택: test(독립테스트), server(웹서버), demo(대화형데모)"
+        # 'chat' 모드 추가
+        choices=["test", "server", "demo", "chat"],
+        # help 메시지 수정
+        help="실행 모드 선택: test(독립테스트), server(웹서버), demo(대화형데모), chat(대화전용)"
     )
     parser.add_argument(
         "--time-speed",
@@ -310,6 +350,9 @@ def main():
             success = run_server_mode()
         elif args.mode == "demo":
             success = interactive_demo()
+        # 'chat' 모드일 때 run_chat_only_demo 함수 호출하는 로직 추가
+        elif args.mode == "chat":
+            success = run_chat_only_demo()
 
         if success:
             print("\n✅ 프로그램이 성공적으로 완료되었습니다.")
@@ -322,7 +365,5 @@ def main():
         import traceback
         traceback.print_exc()
         sys.exit(1)
-
-
 if __name__ == "__main__":
     main()

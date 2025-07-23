@@ -296,3 +296,53 @@ class AutonomousNpcAgent:
             "memory_count": len(self.memory_manager.seq_event) + len(self.memory_manager.seq_thought),
             "knowledge_count": len(self.memory_manager.knowledge_base)
         }
+
+
+    """ 
+    대화형만 테스트하기 위한 함수 
+    """
+    def chat_with_player(self, player_input: str) -> str:
+        """
+        시간 흐름이나 자율 행동 상태 변경 없이 플레이어와 순수하게 대화만 하는 메서드
+        """
+        print(f"[AutonomousNPC] {self.name}: 대화 전용 모드 응답 생성 중...")
+        from datetime import datetime
+
+        # 대화 기록 추가
+        self.conversation_manager.add_message("Player", player_input)
+
+        # 관련 기억 및 지식 검색
+        relevant_memories = self.memory_manager.retrieve_memories(player_input)
+        relevant_knowledge = self.memory_manager.retrieve_knowledge(player_input)
+
+        # 컨텍스트 생성
+        memory_context = "\n".join([f"- {m.description}" for m in relevant_memories])
+        knowledge_context = "\n".join(relevant_knowledge)
+
+        # 대화에 집중하는 간단한 상황 컨텍스트
+        situation_context = f"""
+        현재 감정: {self.current_emotion}
+        """
+
+        # 응답 생성 (기존 로직 재활용)
+        response = self._generate_contextual_response(
+            player_input, memory_context, knowledge_context, situation_context
+        )
+
+        # 대화 내용 기억 및 학습 (상태 변경 없음)
+        # 기억 추가
+        self.memory_manager.add_memory('event', f"플레이어가 나에게 '{player_input}'라고 말했다.", 6)
+        self.memory_manager.add_memory('event', f"나는 플레이어에게 '{response}'라고 대답했다.", 6)
+
+        # 대화 기록 및 요약
+        self.conversation_manager.add_message(self.name, response)
+        self.conversation_manager.summarize_conversation()
+
+        # 지식 학습
+        interaction = f"Player: {player_input}\n{self.name}: {response}"
+        self.memory_manager.learn_from_interaction(interaction)
+
+        # 감정 업데이트
+        self._update_emotion_from_interaction(player_input, response)
+
+        return response

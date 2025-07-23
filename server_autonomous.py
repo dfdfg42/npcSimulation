@@ -6,7 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 
-from config_autonomous import *
+# 'config_autonomous'를 'config'로 수정
+from config import *
 from llm_utils import LLM_Utils
 from npc_agent_autonomous import AutonomousNpcAgent
 from time_manager import time_manager
@@ -45,10 +46,6 @@ class TimeControlRequest(BaseModel):
     speed: Optional[float] = None
 
 
-class TimeControlRequest(BaseModel):
-    action: str  # "start", "stop", "set_speed"
-    speed: Optional[float] = None
-
 # Unity에서 받을 장소 목록 모델
 class UpdateLocationsRequest(BaseModel):
     locations: List[str]
@@ -85,7 +82,8 @@ async def startup_event():
 
     # API 키 확인
     if not OPENAI_API_KEY or OPENAI_API_KEY == "sk-your-api-key-here":
-        raise Exception("OpenAI API 키를 config_autonomous.py에 설정해주세요!")
+        # 파일 이름을 'config.py'로 수정
+        raise Exception("OpenAI API 키를 config.py에 설정해주세요!")
 
     # LLM 유틸리티 초기화
     llm_utils = LLM_Utils(api_key=OPENAI_API_KEY)
@@ -306,16 +304,14 @@ async def list_npcs():
 @app.post("/system/locations/update")
 async def update_available_locations(request: UpdateLocationsRequest):
     """(Unity용) 사용 가능한 장소 목록을 업데이트하고, NPC의 행동을 개시합니다."""
-    global available_locations, is_unity_connected  # is_unity_connected 전역 변수 사용 명시
+    global available_locations, is_unity_connected
     if request.locations:
         available_locations = sorted(list(set(request.locations)))
         print(f"✅ 사용 가능한 장소 목록 업데이트됨: {available_locations}")
 
-        # 현재 활성화된 모든 NPC에게 새로운 장소 목록을 알려줍니다.
         for npc in npc_agents.values():
             npc.planner.set_available_locations(available_locations)
 
-        # ⭐ 추가: Unity가 성공적으로 연결되었음을 알림
         if not is_unity_connected:
             print("\n✅ Unity 클라이언트 연결됨! NPC 자율 행동 시스템을 시작합니다.")
             is_unity_connected = True
@@ -323,17 +319,16 @@ async def update_available_locations(request: UpdateLocationsRequest):
         return {"status": "success", "message": f"{len(available_locations)}개의 장소가 등록되었습니다."}
     else:
         raise HTTPException(status_code=400, detail="장소 목록이 비어있습니다.")
+
 @app.post("/npc/create")
 async def create_npc(request: CreateNPCRequest):
     """새로운 자율 NPC 생성"""
     try:
-        # ... (기존 코드) ...
         new_npc = AutonomousNpcAgent(
             name=request.name,
             persona=request.persona,
             llm_utils=llm_utils
         )
-        # 새로 생성된 NPC에게도 장소 목록을 설정해줍니다.
         new_npc.planner.set_available_locations(available_locations)
         npc_agents[request.npc_id] = new_npc
 
@@ -355,7 +350,6 @@ async def delete_npc(npc_id: str):
         if npc_id not in npc_agents:
             raise HTTPException(status_code=404, detail=f"NPC '{npc_id}'를 찾을 수 없습니다.")
 
-        # 기본 NPC는 삭제 방지
         if npc_id == "seoa":
             raise HTTPException(status_code=400, detail="기본 NPC는 삭제할 수 없습니다.")
 
@@ -392,8 +386,8 @@ async def get_system_stats():
         "current_game_time": time_manager.get_time_str(),
         "time_speed": time_manager.time_speed,
         "uptime_info": {
-            "server_start": "서버 시작 시간 정보",  # 실제로는 시작 시간 추적 구현
-            "game_days_passed": "게임 내 경과 일수"  # 실제로는 경과 일수 계산 구현
+            "server_start": "서버 시작 시간 정보",
+            "game_days_passed": "게임 내 경과 일수"
         }
     }
 
@@ -405,10 +399,7 @@ async def shutdown_event():
 
     print("🔄 서버 종료 중...")
 
-    # 자율 행동 시스템 정지
     autonomous_loop_running = False
-
-    # 시간 관리자 정지
     time_manager.stop_time_flow()
 
     print("✅ 서버가 안전하게 종료되었습니다.")

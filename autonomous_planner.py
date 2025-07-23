@@ -1,4 +1,4 @@
-# autonomous_planner.py
+# autonomous_planner.py - 동기화 문제 해결 및 LLM 연동 개선 버전
 import random
 import re
 
@@ -15,6 +15,7 @@ class AutonomousPlanner:
         self.daily_schedule_org = []
         self.current_action_index = 0
         self.last_planning_date = None
+        self.wake_up_hour = 7  # 기상 시간 저장
 
         # Unity로부터 받을 이동 가능 장소 목록
         self.available_locations = []
@@ -38,8 +39,11 @@ class AutonomousPlanner:
         prompt = f"{self.npc.persona}의 성격과 생활 패턴을 고려할 때, 보통 몇 시에 일어날까요? 6~10 사이의 숫자 하나로만 답해주세요."
         try:
             response = self.llm_utils.get_llm_response(prompt, temperature=0.1, max_tokens=10)
-            return max(6, min(10, int(response.strip())))
+            wake_up = max(6, min(10, int(response.strip())))
+            self.wake_up_hour = wake_up
+            return wake_up
         except:
+            self.wake_up_hour = 7
             return 7
 
     def generate_daily_plan_outline(self, wake_up_hour):
@@ -214,14 +218,26 @@ class AutonomousPlanner:
         print(f"[AutonomousPlanner] 계획 생성 완료: {len(self.daily_schedule)}개 활동")
 
     def _find_current_action_index(self, current_time):
-        """현재 시간에 해당하는 활동 인덱스 찾기"""
-        current_minutes = current_time.hour * 60 + current_time.minute
-        elapsed_minutes = 0
+        """현재 시간에 해당하는 활동 인덱스 찾기 (수정됨)"""
+        # 현재 시간이 기상 시간 이전이면 잠자기 상태
+        if current_time.hour < self.wake_up_hour:
+            return len(self.daily_schedule) - 1  # 마지막 활동(잠자기)
+
+        # 기상 시간부터의 경과 시간 계산
+        elapsed_minutes = (current_time.hour - self.wake_up_hour) * 60 + current_time.minute
+        accumulated_minutes = 0
+
+        print(
+            f"[DEBUG] 현재 시간: {current_time.hour}:{current_time.minute}, 기상 시간: {self.wake_up_hour}, 경과 시간: {elapsed_minutes}분")
 
         for i, (activity, duration) in enumerate(self.daily_schedule):
-            if elapsed_minutes + duration > current_minutes:
+            print(
+                f"[DEBUG] 활동 {i}: {activity} ({duration}분), 누적: {accumulated_minutes}~{accumulated_minutes + duration}")
+
+            if accumulated_minutes <= elapsed_minutes < accumulated_minutes + duration:
+                print(f"[DEBUG] 현재 활동: {i}번째 - {activity}")
                 return i
-            elapsed_minutes += duration
+            accumulated_minutes += duration
 
         return len(self.daily_schedule) - 1  # 마지막 활동
 
@@ -237,15 +253,22 @@ class AutonomousPlanner:
         )
 
     def get_current_activity(self, current_time):
-        """현재 시간에 해당하는 활동 반환"""
+        """현재 시간에 해당하는 활동 반환 (수정됨)"""
         if not self.daily_schedule:
             return "대기 중", 30
 
         # 현재 활동 인덱스 업데이트
-        self.current_action_index = self._find_current_action_index(current_time)
+        new_index = self._find_current_action_index(current_time)
+
+        # 인덱스가 변경되었을 때만 로그 출력
+        if new_index != self.current_action_index:
+            print(f"[AutonomousPlanner] 활동 변경: {self.current_action_index} -> {new_index}")
+            self.current_action_index = new_index
 
         if self.current_action_index < len(self.daily_schedule):
-            return self.daily_schedule[self.current_action_index]
+            activity, duration = self.daily_schedule[self.current_action_index]
+            print(f"[AutonomousPlanner] 현재 활동: {activity} ({duration}분)")
+            return activity, duration
 
         return "대기 중", 30
 
@@ -258,7 +281,7 @@ class AutonomousPlanner:
         elapsed_minutes = 0
 
         for i, (activity, duration) in enumerate(self.daily_schedule):
-            hour = elapsed_minutes // 60
+            hour = self.wake_up_hour + elapsed_minutes // 60
             minute = elapsed_minutes % 60
 
             status = "→ " if i == self.current_action_index else "  "
@@ -267,6 +290,31 @@ class AutonomousPlanner:
             elapsed_minutes += duration
 
         return summary
+
+    def debug_schedule_status(self, current_time):
+        """스케줄 상태 디버깅용 함수"""
+        print("=" * 50)
+        print(f"[DEBUG] 현재 시간: {current_time.strftime('%H:%M')}")
+        print(f"[DEBUG] 기상 시간: {self.wake_up_hour}:00")
+        print(f"[DEBUG] 현재 활동 인덱스: {self.current_action_index}")
+        print(f"[DEBUG] 전체 스케줄:")
+
+        elapsed_minutes = 0
+
+        for i, (activity, duration) in enumerate(self.daily_schedule):
+            start_hour = self.wake_up_hour + elapsed_minutes // 60
+            start_minute = elapsed_minutes % 60
+            end_minute = elapsed_minutes + duration
+            end_hour = self.wake_up_hour + end_minute // 60
+            end_minute = end_minute % 60
+
+            status = ">>> " if i == self.current_action_index else "    "
+            print(
+                f"{status}{i}: {start_hour:02d}:{start_minute:02d}-{end_hour:02d}:{end_minute:02d} {activity} ({duration}분)")
+
+            elapsed_minutes += duration
+
+        print("=" * 50)
 
     def modify_schedule_for_interaction(self, interaction_type, duration_minutes):
         """상호작용으로 인한 스케줄 수정"""

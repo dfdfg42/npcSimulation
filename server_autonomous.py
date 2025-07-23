@@ -311,6 +311,7 @@ async def update_available_locations(request: UpdateLocationsRequest):
 
         for npc in npc_agents.values():
             npc.planner.set_available_locations(available_locations)
+            npc.executor.set_available_locations(available_locations)
 
         if not is_unity_connected:
             print("\n✅ Unity 클라이언트 연결됨! NPC 자율 행동 시스템을 시작합니다.")

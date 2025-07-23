@@ -282,17 +282,31 @@ async def list_npcs():
     """활성화된 NPC 목록 조회 (자율 행동 정보 포함)"""
     npc_list = []
     for npc_id, npc in npc_agents.items():
-        status = npc.get_status_for_unity()
-        npc_list.append({
-            "npc_id": npc_id,
-            "name": npc.name,
-            "persona": npc.persona[:50] + "..." if len(npc.persona) > 50 else npc.persona,
-            "current_action": status.get('current_action', '알 수 없음'),
-            "location": status.get('location', '알 수 없음'),
-            "emotion": status.get('emotion', '평온함'),
-            "autonomous_mode": npc.is_autonomous_mode,
-            "interaction_available": status.get('interaction_available', True)
-        })
+        try:
+            status = npc.get_status_for_unity()
+            npc_list.append({
+                "npc_id": npc_id,
+                "name": npc.name,
+                "persona": npc.persona[:50] + "..." if len(npc.persona) > 50 else npc.persona,
+                "current_action": status.get('current_action', status.get('action', '알 수 없음')),
+                "location": status.get('location', '알 수 없음'),
+                "emotion": status.get('emotion', '평온함'),
+                "autonomous_mode": npc.is_autonomous_mode,
+                "interaction_available": status.get('interaction_available', True)
+            })
+        except Exception as e:
+            print(f"[ERROR] NPC {npc_id} 상태 조회 오류: {e}")
+            # 오류 발생시 기본값으로 추가
+            npc_list.append({
+                "npc_id": npc_id,
+                "name": npc.name,
+                "persona": npc.persona[:50] + "..." if len(npc.persona) > 50 else npc.persona,
+                "current_action": "오류",
+                "location": "알 수 없음",
+                "emotion": "평온함",
+                "autonomous_mode": npc.is_autonomous_mode,
+                "interaction_available": False
+            })
 
     return {
         "npcs": npc_list,

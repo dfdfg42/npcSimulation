@@ -91,7 +91,7 @@ async def startup_event():
     # 기본 NPC 생성 (이서아)
     default_npc = AutonomousNpcAgent(
         name="이서아",
-        persona="21살의 대학생. 시각 디자인을 전공하며 졸업 작품으로 고민이 많다. 평소 도서관에서 공부하거나 카페에서 휴식하는 것을 좋아한다.",
+        persona="22살 대학생. 같은 아파트에서 함께 살고 있는 룸메이트. 디자인을 전공하며 요리를 좋아한다. 성격이 밝고 사교적이다.",
         llm_utils=llm_utils
     )
     # NPC 플래너에 사용 가능한 장소 목록 설정

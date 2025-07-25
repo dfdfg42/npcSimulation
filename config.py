@@ -2,7 +2,7 @@
 # 기존 설정들 + 자율 행동 시스템 설정
 
 # OpenAI API 키
-OPENAI_API_KEY = "sk"
+OPENAI_API_KEY = "sk-"
 
 # 메모리 설정
 SHORT_TERM_MAXLEN = 50          # 단기 큐 최대 길이
@@ -31,11 +31,11 @@ CHAT_MODEL = "gpt-4o-mini"
 
 # 시간 관리 설정
 GAME_START_TIME = "February 13, 2023, 07:00:00"  # 게임 시작 시간
-DEFAULT_TIME_SPEED = 60  # 시간 배속 (60 = 1분에 1시간)
+DEFAULT_TIME_SPEED = 10  # 시간 배속 (60 = 1분에 1시간)
 TIME_UPDATE_INTERVAL = 1  # 시간 업데이트 간격 (초)
 
 # 자율 행동 설정
-AUTONOMOUS_UPDATE_INTERVAL = 60  # 자율 행동 업데이트 간격 (초)
+AUTONOMOUS_UPDATE_INTERVAL = 10  # 자율 행동 업데이트 간격 (초)
 DEFAULT_ACTION_DURATION = 30  # 기본 행동 지속 시간 (분)
 MIN_ACTION_DURATION = 5  # 최소 행동 지속 시간 (분)
 MAX_ACTION_DURATION = 180  # 최대 행동 지속 시간 (분)

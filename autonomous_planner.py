@@ -67,6 +67,7 @@ class AutonomousPlanner:
         recent_memories = self.npc.memory_manager.retrieve_recent_memories(count=5)
         memory_summary = "\n".join([f"- {m.description}" for m in recent_memories])
         conversation_summary = self.npc.conversation_manager.get_conversation_summary()
+        locations_str = ", ".join(self.available_locations) if self.available_locations else "지정된 장소가 없음"
 
         prompt = f"""
         당신은 {self.npc.name}의 하루 계획을 세우는 AI입니다.
@@ -80,16 +81,20 @@ class AutonomousPlanner:
         ### 최근 대화 요약 ###
         {conversation_summary}
 
+        ### 사용 가능한 장소 ###
+        {locations_str}
+
         ### 지시사항 ###
         위 정보를 바탕으로 {self.npc.name}의 하루 목표와 해야 할 일들을 4-6개의 주요 활동으로 나열해주세요.
         각 활동은 NPC의 성격, 전공, 최근 경험을 반영해야 합니다.
+        특히, 활동들은 '사용 가능한 장소' 목록 내에서 수행할 수 있는 것들이어야 합니다.
 
         형식: 각 줄마다 한 가지 활동만 작성
         예시:
-        졸업 작품 아이디어 구상하기
-        수학 과제 완료하기
+        도서관에서 졸업 작품 아이디어 구상하기
+        과방에서 수학 과제 완료하기
         친구와 카페에서 대화하기
-        충분한 휴식 취하기
+        기숙사에서 충분한 휴식 취하기
 
         응답:
         """
